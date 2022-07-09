@@ -29,7 +29,7 @@ use crate::spanned::Spanned;
 use crate::string::{rewrite_string, StringFormat};
 use crate::types::{rewrite_path, PathContext};
 use crate::utils::{
-    colon_spaces, contains_skip, count_newlines, filtered_str_fits, first_line_ends_with,
+    colon_spaces, contains_skip, all_skip_attrs, count_newlines, filtered_str_fits, first_line_ends_with,
     inner_attributes, last_line_extendable, last_line_width, mk_sp, outer_attributes,
     semicolon_for_expr, unicode_str_width, wrap_str,
 };
@@ -544,10 +544,10 @@ pub(crate) fn rewrite_block_with_visitor(
     let label_str = rewrite_label(label);
     visitor.visit_block(block, inner_attrs.as_deref(), has_braces);
     let visitor_context = visitor.get_context();
-    context
-        .skipped_range
-        .borrow_mut()
-        .append(&mut visitor_context.skipped_range.borrow_mut());
+    //context
+    //    .skipped_range
+    //    .borrow_mut()
+    //    .append(&mut visitor_context.skipped_range.borrow_mut());
     Some(format!("{}{}{}", prefix, label_str, visitor.buffer))
 }
 
@@ -1552,6 +1552,19 @@ fn rewrite_struct_lit<'a>(
         ast::StructRest::Rest(_) | ast::StructRest::Base(_) => true,
         _ => false,
     };
+
+    for f in fields.iter() {
+        if contains_skip(&f.attrs) {
+            for attr in all_skip_attrs(&f.attrs) {
+               let lo = context.parse_sess.line_of_byte_pos(attr.span.lo());
+               let hi = context.parse_sess.line_of_byte_pos(attr.span.hi());
+               context.skipped_range.borrow_mut().push((lo, hi));
+            }
+           let lo = context.parse_sess.line_of_byte_pos(f.span.lo());
+           let hi = context.parse_sess.line_of_byte_pos(f.span.hi());
+           context.skipped_range.borrow_mut().push((lo, hi));
+        }
+    }
 
     // Foo { a: Foo } - indent is +3, width is -5.
     let (h_shape, v_shape) = struct_lit_shape(shape, context, path_str.len() + 3, 2)?;

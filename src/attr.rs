@@ -238,23 +238,21 @@ fn rewrite_initial_doc_comments(
     if attrs.is_empty() {
         return Some((0, None));
     }
+
+
     // Rewrite doc comments
-    let sugared_docs = take_while_with_pred(context, attrs, |a| a.is_doc_comment());
-    if !sugared_docs.is_empty() {
-        let snippet = sugared_docs
-            .iter()
-            .map(|a| context.snippet(a.span))
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Some((
-            sugared_docs.len(),
-            Some(rewrite_doc_comment(
-                &snippet,
-                shape.comment(context.config),
-                context.config,
-            )?),
-        ));
-    }
+        for f in attrs.iter().filter(|a| a.is_doc_comment()) {
+            if crate::utils::contains_skip(&attrs) {
+                for attr in crate::utils::all_skip_attrs(&attrs) {
+                   let lo = context.parse_sess.line_of_byte_pos(attr.span.lo());
+                   let hi = context.parse_sess.line_of_byte_pos(attr.span.hi());
+                   context.skipped_range.borrow_mut().push((lo, hi));
+                }
+               let lo = context.parse_sess.line_of_byte_pos(f.span.lo());
+               let hi = context.parse_sess.line_of_byte_pos(f.span.hi());
+               context.skipped_range.borrow_mut().push((lo, hi));
+            }
+        }
 
     Some((0, None))
 }

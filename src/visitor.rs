@@ -24,7 +24,7 @@ use crate::source_map::{LineRangeUtils, SpanUtils};
 use crate::spanned::Spanned;
 use crate::stmt::Stmt;
 use crate::utils::{
-    self, contains_skip, count_newlines, depr_skip_annotation, format_unsafety, inner_attributes,
+    self, contains_skip, all_skip_attrs, count_newlines, depr_skip_annotation, format_unsafety, inner_attributes,
     last_line_width, mk_sp, ptr_vec_to_ref_vec, rewrite_ident, starts_with_newline, stmt_expr,
 };
 use crate::{ErrorKind, FormatReport, FormattingError};
@@ -145,6 +145,16 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
                 self.push_str(";");
             }
             self.last_pos = stmt.span().hi();
+            return;
+        }
+
+        let attrs = get_attrs_from_stmt(stmt.as_ast_node());
+        if contains_skip(attrs) {
+            self.push_skipped_with_span(
+                attrs,
+                stmt.span(),
+                get_span_without_attrs(stmt.as_ast_node()),
+            );
             return;
         }
 
@@ -581,16 +591,8 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
                     self.push_rewrite(item.span, snippet);
                 }
                 ast::ItemKind::MacroDef(ref def) => {
-                    let rewrite = rewrite_macro_def(
-                        &self.get_context(),
-                        self.shape(),
-                        self.block_indent,
-                        def,
-                        item.ident,
-                        &item.vis,
-                        item.span,
-                    );
-                    self.push_rewrite(item.span, rewrite);
+                    let snippet = Some(self.snippet(item.span).to_owned());
+                    self.push_rewrite(item.span, snippet);
                 }
             };
         }
@@ -683,7 +685,7 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
 
         // 1 = ;
         let shape = self.shape().saturating_sub_width(1);
-        let rewrite = self.with_context(|ctx| rewrite_macro(mac, ident, ctx, shape, pos));
+        let rewrite = self.with_context_macro(|ctx| rewrite_macro(mac, ident, ctx, shape, pos));
         // As of v638 of the rustc-ap-* crates, the associated span no longer includes
         // the trailing semicolon. This determines the correct span to ensure scenarios
         // with whitespace between the delimiters and trailing semi (i.e. `foo!(abc)     ;`)
@@ -742,13 +744,24 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
             .map(|attr| self.parse_sess.line_of_byte_pos(attr.span.hi()))
             .max()
             .unwrap_or(1);
+        for attr in all_skip_attrs(attrs) {
+            let lo = self.parse_sess.line_of_byte_pos(attr.span.lo());
+            let hi = self.parse_sess.line_of_byte_pos(attr.span.hi());
+            self.skipped_range.borrow_mut().push((lo, hi));
+        }
         let first_line = self.parse_sess.line_of_byte_pos(main_span.lo());
         // Statement can start after some newlines and/or spaces
         // or it can be on the same line as the last attribute.
         // So here we need to take a minimum between the two.
         let lo = std::cmp::min(attrs_end + 1, first_line);
         self.push_rewrite_inner(item_span, None);
-        let hi = self.line_number + 1;
+        let hi = self.parse_sess.line_of_byte_pos(main_span.hi());
+        dbg!((lo, hi));
+        if lo == 8 {
+            //panic!("hit!");
+        }
+        //SKIPPED_RANGE.borrow_mut().push((lo, hi));
+        //dbg!(&self.skipped_range);
         self.skipped_range.borrow_mut().push((lo, hi));
     }
 
@@ -758,6 +771,7 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
             ctx.config,
             ctx.snippet_provider,
             ctx.report.clone(),
+            ctx.skipped_range.clone(),
         );
         visitor.skip_context.update(ctx.skip_context.clone());
         visitor.set_parent_context(ctx);
@@ -769,7 +783,9 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
         config: &'a Config,
         snippet_provider: &'a SnippetProvider,
         report: FormatReport,
+        skipped_range: Lrc<RefCell<Vec<(usize, usize)>>>,
     ) -> FmtVisitor<'a> {
+        //eprintln!("{}", std::backtrace::Backtrace::capture());
         FmtVisitor {
             parent_context: None,
             parse_sess: parse_session,
@@ -780,7 +796,7 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
             is_if_else_block: false,
             snippet_provider,
             line_number: 0,
-            skipped_range: Rc::new(RefCell::new(vec![])),
+            skipped_range,
             is_macro_def: false,
             macro_rewrite_failure: false,
             report,
@@ -990,6 +1006,20 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
         self.macro_rewrite_failure |= context.macro_rewrite_failure.get();
         result
     }
+
+    pub(crate) fn with_context_macro<F>(&mut self, f: F) -> Option<String>
+    where
+        F: Fn(&RewriteContext<'_>) -> Option<String>,
+    {
+        let mut context = self.get_context();
+        context.skipped_range = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+
+        let result = f(&context);
+
+        self.macro_rewrite_failure |= context.macro_rewrite_failure.get();
+        result
+    }
+
 
     pub(crate) fn get_context(&self) -> RewriteContext<'_> {
         RewriteContext {

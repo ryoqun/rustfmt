@@ -275,6 +275,13 @@ pub(crate) fn contains_skip(attrs: &[Attribute]) -> bool {
 }
 
 #[inline]
+pub(crate) fn all_skip_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
+    attrs
+        .iter()
+        .filter(|a| a.meta().map_or(false, |a| is_skip(&a)))
+}
+
+#[inline]
 pub(crate) fn semicolon_for_expr(context: &RewriteContext<'_>, expr: &ast::Expr) -> bool {
     // Never try to insert semicolons on expressions when we're inside
     // a macro definition - this can prevent the macro from compiling

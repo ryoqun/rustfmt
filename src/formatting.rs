@@ -202,6 +202,7 @@ impl<'a, T: FormatHandler + 'a> FormatContext<'a, T> {
             self.config,
             &snippet_provider,
             self.report.clone(),
+            std::rc::Rc::new(std::cell::RefCell::new(vec![])),
         );
         visitor.skip_context.update_with_attrs(&self.krate.attrs);
         visitor.is_macro_def = is_macro_def;
@@ -233,6 +234,7 @@ impl<'a, T: FormatHandler + 'a> FormatContext<'a, T> {
             &mut visitor.buffer,
             snippet_provider.entire_snippet(),
         );
+        
 
         if visitor.macro_rewrite_failure {
             self.report.add_macro_format_failure();
@@ -240,6 +242,7 @@ impl<'a, T: FormatHandler + 'a> FormatContext<'a, T> {
         self.report
             .add_non_formatted_ranges(visitor.skipped_range.borrow().clone());
 
+        visitor.buffer = strip_skipped(&mut visitor.buffer, visitor.skipped_range.borrow().clone());
         self.handler.handle_formatted_file(
             &self.parse_session,
             path,
@@ -247,6 +250,30 @@ impl<'a, T: FormatHandler + 'a> FormatContext<'a, T> {
             &mut self.report,
         )
     }
+}
+
+fn is_skipped_line(skipped_range: &[(usize, usize)], cur_line: usize) -> bool {
+    skipped_range
+        .iter()
+        .any(|&(lo, hi)| lo <= cur_line && cur_line <= hi)
+}
+
+fn strip_skipped(formatted_text: &String, skipped_range: Vec<(usize, usize)>) -> String {
+    //dbg!(&skipped_range);
+    let mut transformed = String::with_capacity(2 * formatted_text.capacity());
+    let mut chars = formatted_text.chars();
+    let mut cur_line = 1;
+    let mut strip = is_skipped_line(&skipped_range, cur_line);
+    for (kind, c) in CharClasses::new(formatted_text.chars()) {
+        if c == '\n' {
+            cur_line += 1;
+            strip = is_skipped_line(&skipped_range, cur_line);
+        }
+        if !strip {
+            transformed.push(c)
+        }
+    }
+    transformed
 }
 
 // Handle the results of formatting.

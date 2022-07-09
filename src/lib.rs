@@ -1,3 +1,5 @@
+#![feature(backtrace)]
+#![feature(thread_local)]
 #![feature(rustc_private)]
 #![deny(rust_2018_idioms)]
 #![warn(unreachable_pub)]

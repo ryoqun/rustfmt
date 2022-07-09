@@ -988,9 +988,33 @@ fn format_struct(
     match *struct_parts.def {
         ast::VariantData::Unit(..) => format_unit_struct(context, struct_parts, offset),
         ast::VariantData::Tuple(ref fields, _) => {
+            for f in fields.iter() {
+                if contains_skip(&f.attrs) {
+                    for attr in all_skip_attrs(&f.attrs) {
+                       let lo = context.parse_sess.line_of_byte_pos(attr.span.lo());
+                       let hi = context.parse_sess.line_of_byte_pos(attr.span.hi());
+                       context.skipped_range.borrow_mut().push((lo, hi));
+                    }
+                   let lo = context.parse_sess.line_of_byte_pos(f.span.lo());
+                   let hi = context.parse_sess.line_of_byte_pos(f.span.hi());
+                   context.skipped_range.borrow_mut().push((lo, hi));
+                }
+            }
             format_tuple_struct(context, struct_parts, fields, offset)
         }
         ast::VariantData::Struct(ref fields, _) => {
+            for f in fields.iter() {
+                if contains_skip(&f.attrs) {
+                    for attr in all_skip_attrs(&f.attrs) {
+                       let lo = context.parse_sess.line_of_byte_pos(attr.span.lo());
+                       let hi = context.parse_sess.line_of_byte_pos(attr.span.hi());
+                       context.skipped_range.borrow_mut().push((lo, hi));
+                    }
+                   let lo = context.parse_sess.line_of_byte_pos(f.span.lo());
+                   let hi = context.parse_sess.line_of_byte_pos(f.span.hi());
+                   context.skipped_range.borrow_mut().push((lo, hi));
+                }
+            }
             format_struct_struct(context, struct_parts, fields, offset, one_line_width)
         }
     }

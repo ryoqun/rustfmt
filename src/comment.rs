@@ -966,6 +966,8 @@ pub(crate) fn recover_missing_comment_in_span(
     context: &RewriteContext<'_>,
     used_width: usize,
 ) -> Option<String> {
+    return None;
+
     let missing_comment = rewrite_missing_comment(span, shape, context)?;
     if missing_comment.is_empty() {
         Some(String::new())
