@@ -756,7 +756,7 @@ impl<'b, 'a: 'b> FmtVisitor<'a> {
         let lo = std::cmp::min(attrs_end + 1, first_line);
         self.push_rewrite_inner(item_span, None);
         let hi = self.parse_sess.line_of_byte_pos(main_span.hi());
-        dbg!((lo, hi));
+        //dbg!((lo, hi));
         if lo == 8 {
             //panic!("hit!");
         }
